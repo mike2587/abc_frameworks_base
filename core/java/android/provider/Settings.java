@@ -4428,10 +4428,20 @@ public final class Settings {
         public static final String LOCKSCREEN_PIN_SCRAMBLE_LAYOUT = "lockscreen_scramble_pin_layout";
 
         /** @hide */
-        private static final Validator LOCKSCREEN_PIN_SCRAMBLE_LAYOUT_VALIDATOR = BOOLEAN_VALIDATOR;        
+        private static final Validator LOCKSCREEN_PIN_SCRAMBLE_LAYOUT_VALIDATOR = BOOLEAN_VALIDATOR;     
+        
+        /**
+        * Whether to use the custom quick unlock screen control
+        * @hide
+        */
+        public static final String LOCKSCREEN_QUICK_UNLOCK_CONTROL =
+               "lockscreen_quick_unlock_control";
+
+        /** @hide */
+        private static final Validator LOCKSCREEN_QUICK_UNLOCK_CONTROL_VALIDATOR = BOOLEAN_VALIDATOR;
+        
 
         /** End of ABC system settings**/
-
 
         /**
           * Volume keys control cursor in text fields (default is 0)
@@ -4503,6 +4513,7 @@ public final class Settings {
             DISPLAY_COLOR_MODE,
             NOTIFICATION_LIGHT_PULSE,
             LOCKSCREEN_PIN_SCRAMBLE_LAYOUT,
+            LOCKSCREEN_QUICK_UNLOCK_CONTROL,
         };
 
         /**
@@ -4707,6 +4718,7 @@ public final class Settings {
             VALIDATORS.put(SHOW_BATTERY_PERCENT, SHOW_BATTERY_PERCENT_VALIDATOR);
             VALIDATORS.put(NOTIFICATION_LIGHT_PULSE, BOOLEAN_VALIDATOR);
             VALIDATORS.put(LOCKSCREEN_PIN_SCRAMBLE_LAYOUT,LOCKSCREEN_PIN_SCRAMBLE_LAYOUT_VALIDATOR);
+            VALIDATORS.put(LOCKSCREEN_QUICK_UNLOCK_CONTROL,LOCKSCREEN_QUICK_UNLOCK_CONTROL_VALIDATOR);
         }
 
         /**
