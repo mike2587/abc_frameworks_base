@@ -245,11 +245,19 @@ public class PowerUI extends SystemUI {
                     return;
                 }
 
+                 if ((plugged && !oldPlugged
+                         && (mPlugType == BatteryManager.BATTERY_PLUGGED_AC
+                             || mPlugType == BatteryManager.BATTERY_PLUGGED_USB))
+                             || (!plugged && oldPlugged
+                            && (oldPlugType == BatteryManager.BATTERY_PLUGGED_AC
+                            || oldPlugType == BatteryManager.BATTERY_PLUGGED_USB))) {
+                    mWarnings.notifyBatteryPlugged();
+                }
+
                 // Show the correct version of low battery warning if needed
                 ThreadUtils.postOnBackgroundThread(() -> {
                     maybeShowBatteryWarning(plugged, oldPlugged, oldBucket, bucket);
                 });
-
             } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 mScreenOffTime = SystemClock.elapsedRealtime();
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
@@ -531,6 +539,7 @@ public class PowerUI extends SystemUI {
         void updateThresholds(long lowThreshold, long severeThreshold);
         void dismissLowBatteryWarning();
         void showLowBatteryWarning(boolean playSound);
+        void notifyBatteryPlugged();
         void dismissInvalidChargerWarning();
         void showInvalidChargerWarning();
         void updateLowBatteryWarning();
