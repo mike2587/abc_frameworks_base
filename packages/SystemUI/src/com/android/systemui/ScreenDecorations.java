@@ -105,9 +105,9 @@ public class ScreenDecorations extends SystemUI implements Tunable {
 
         int padding = mContext.getResources().getDimensionPixelSize(
                 R.dimen.rounded_corner_content_padding);
-        if (padding != 0) {
-            setupPadding(padding);
-        }
+        int qsPadding = mContext.getResources().getDimensionPixelSize(
+                R.dimen.qs_corner_content_padding);
+        setupPadding(padding, qsPadding);
 
         mDisplayListener = new DisplayManager.DisplayListener() {
             @Override
@@ -279,19 +279,22 @@ public class ScreenDecorations extends SystemUI implements Tunable {
                 com.android.internal.R.bool.config_fillMainBuiltInDisplayCutout);
     }
 
-    private void setupPadding(int padding) {
+    private void setupPadding(int padding, int qsPadding) {
         // Add some padding to all the content near the edge of the screen.
         StatusBar sb = getComponent(StatusBar.class);
         View statusBar = (sb != null ? sb.getStatusBarWindow() : null);
         if (statusBar != null) {
-            TunablePadding.addTunablePadding(statusBar.findViewById(R.id.keyguard_header), PADDING,
-                    padding, FLAG_END);
-
             FragmentHostManager fragmentHostManager = FragmentHostManager.get(statusBar);
-            fragmentHostManager.addTagListener(CollapsedStatusBarFragment.TAG,
-                    new TunablePaddingTagListener(padding, R.id.status_bar));
-            fragmentHostManager.addTagListener(QS.TAG,
-                    new TunablePaddingTagListener(padding, R.id.header));
+            if (padding != 0) {
+                TunablePadding.addTunablePadding(statusBar.findViewById(R.id.keyguard_header), PADDING,
+                        padding, FLAG_END);
+                 fragmentHostManager.addTagListener(CollapsedStatusBarFragment.TAG,
+                        new TunablePaddingTagListener(padding, R.id.status_bar));
+            }
+            if (qsPadding != 0) {
+                fragmentHostManager.addTagListener(QS.TAG,
+                        new TunablePaddingTagListener(qsPadding, R.id.header));
+            }
         }
     }
 
