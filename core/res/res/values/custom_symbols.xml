@@ -85,6 +85,10 @@
 
   <!-- Notification sender text color -->
   <java-symbol type="color" name="sender_text_color" />
-  
+
   <java-symbol type="bool" name="config_alt_ambient_display" />
+
+  <!-- Full screen aspect ratio -->
+  <java-symbol type="bool" name="config_haveHigherAspectRatioScreen" />
+  <java-symbol type="dimen" name="config_screenAspectRatio" />
 </resources>
