@@ -910,14 +910,14 @@ public class ResolverActivity extends Activity {
                 mLaunchedFromUid, mSupportsAlwaysUseOption && !isVoiceInteraction());
         boolean rebuildCompleted = mAdapter.rebuildList();
 
-        if (useLayoutWithDefault()) {
+        int count = mAdapter.getUnfilteredCount();
+        boolean emptyList = count == 0 && mAdapter.mPlaceholderCount == 0;
+        if (useLayoutWithDefault() && !emptyList) {
             mLayoutId = R.layout.resolver_list_with_default;
         } else {
             mLayoutId = getLayoutResource();
         }
         setContentView(mLayoutId);
-
-        int count = mAdapter.getUnfilteredCount();
 
         // We only rebuild asynchronously when we have multiple elements to sort. In the case where
         // we're already done, we can check if we should auto-launch immediately.
@@ -938,7 +938,7 @@ public class ResolverActivity extends Activity {
 
         mAdapterView = findViewById(R.id.resolver_list);
 
-        if (count == 0 && mAdapter.mPlaceholderCount == 0) {
+        if (emptyList) {
             final TextView emptyView = findViewById(R.id.empty);
             emptyView.setVisibility(View.VISIBLE);
             mAdapterView.setVisibility(View.GONE);
