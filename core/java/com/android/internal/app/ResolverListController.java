@@ -102,7 +102,7 @@ public class ResolverListController {
     public List<ResolverActivity.ResolvedComponentInfo> getResolversForIntent(
             boolean shouldGetResolvedFilter,
             boolean shouldGetActivityMetadata,
-            List<Intent> intents) {
+            List<Intent> intents, boolean skipBlacklistedApps) {
         List<ResolverActivity.ResolvedComponentInfo> resolvedComponents = null;
         for (int i = 0, N = intents.size(); i < N; i++) {
             final Intent intent = intents.get(i);
@@ -119,7 +119,7 @@ public class ResolverListController {
                         mContext.getContentResolver(), Settings.System.CHOOSER_ACTIVITY_BLACKLIST,
                         UserHandle.USER_CURRENT);
                 if (info.activityInfo != null && (!info.activityInfo.exported
-                        || (!TextUtils.isEmpty(blacklist) && blacklist.toLowerCase().contains(info.activityInfo.packageName.toLowerCase())))) {
+                        || (!skipBlacklistedApps && !TextUtils.isEmpty(blacklist) && blacklist.toLowerCase().contains(info.activityInfo.packageName.toLowerCase())))) {
                     infos.remove(j);
                 }
             }
