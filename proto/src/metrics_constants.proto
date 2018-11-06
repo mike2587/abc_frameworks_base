@@ -6430,6 +6430,6 @@ message MetricsEvent {
     // END OF AOSP CONSTANTS
 
     // ABC custom constants
-    ABC = 1500;
+    ABC = 1800;
   }
 }
