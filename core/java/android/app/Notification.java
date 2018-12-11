@@ -3247,7 +3247,6 @@ public class Notification implements Parcelable
 
         private boolean mTintActionButtons;
         private boolean mInNightMode;
-        private boolean mAllowIconTextTint;
 
         /**
          * Constructs a new Builder with the defaults:
@@ -3290,7 +3289,6 @@ public class Notification implements Parcelable
             mThemeContext = themeContext;
             Resources res = mThemeContext.getResources();
             mTintActionButtons = res.getBoolean(R.bool.config_tintNotificationActionButtons);
-            mAllowIconTextTint = res.getBoolean(R.bool.config_allowNotificationIconTextTinting);
 
             if (res.getBoolean(R.bool.config_enableNightMode)) {
                 Configuration currentConfig = res.getConfiguration();
@@ -5461,11 +5459,11 @@ public class Notification implements Parcelable
             boolean colorable = !isLegacy() || getColorUtil().isGrayscaleIcon(mContext, smallIcon);
             int color;
             if (ambient) {
-                color = mAllowIconTextTint ? resolveAmbientColor() : mThemeContext.getColor(R.color.notification_icon_default_color);
+                color = resolveAmbientColor();
             } else if (isColorized()) {
                 color = getPrimaryTextColor();
             } else {
-                color = mAllowIconTextTint ? resolveContrastColor() : mThemeContext.getColor(R.color.notification_icon_default_color);
+                color = resolveContrastColor();
             }
             if (colorable) {
                 contentView.setDrawableTint(R.id.icon, false, color,
@@ -5501,11 +5499,7 @@ public class Notification implements Parcelable
         }
 
         int resolveIconContrastColor() {
-            if (!mAllowIconTextTint) {
-                return mThemeContext.getColor(R.color.notification_icon_default_color);
-            } else {
-                return resolveContrastColor();
-            }
+            return resolveContrastColor();
         }
 
         int resolveAppNameTinting() {
@@ -5517,10 +5511,6 @@ public class Notification implements Parcelable
         }
 
         int resolveContrastColor() {
-            if (!mAllowIconTextTint) {
-                return mThemeContext.getColor(R.color.notification_text_default_color);
-            }
-
             if (mCachedContrastColorIsFor == mN.color && mCachedContrastColor != COLOR_INVALID) {
                 return mCachedContrastColor;
             }
