@@ -1227,7 +1227,6 @@ public class StatusBar extends SystemUI implements DemoMode,
 
     @Override
     public void onOverlayChanged() {
-        mEntryManager.updateNotificationsOnDensityOrFontScaleChanged();
         updateNotificationViews();
         mStackScroller.onOverlayChanged();
         mNotificationShelf.onOverlayChanged();
