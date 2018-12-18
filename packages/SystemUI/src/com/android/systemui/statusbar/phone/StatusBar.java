@@ -38,11 +38,6 @@ import static com.android.systemui.statusbar.phone.BarTransitions.MODE_TRANSLUCE
 import static com.android.systemui.statusbar.phone.BarTransitions.MODE_TRANSPARENT;
 import static com.android.systemui.statusbar.phone.BarTransitions.MODE_WARNING;
 
-import com.android.systemui.ambient.play.AmbientIndicationManager;
-import com.android.systemui.ambient.play.AmbientIndicationManagerCallback;
-import com.android.systemui.ambient.play.RecognitionObserver.Observable;
-import com.android.systemui.ambient.play.AmbientIndicationContainer;
-
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.NonNull;
@@ -165,6 +160,9 @@ import com.android.systemui.SystemUI;
 import com.android.systemui.SystemUIFactory;
 import com.android.systemui.UiOffloadThread;
 import com.android.systemui.ambientmusic.AmbientIndicationContainer;
+import com.android.systemui.ambientmusic.AmbientIndicationManager;
+import com.android.systemui.ambientmusic.AmbientIndicationManagerCallback;
+import com.android.systemui.ambientmusic.RecognitionObserver.Observable;
 import com.android.systemui.assist.AssistManager;
 import com.android.systemui.charging.WirelessChargingAnimation;
 import com.android.systemui.classifier.FalsingLog;
@@ -263,7 +261,7 @@ import java.util.Map;
 public class StatusBar extends SystemUI implements DemoMode,
         DragDownHelper.DragDownCallback, ActivityStarter, OnUnlockMethodChangedListener,
         OnHeadsUpChangedListener, CommandQueue.Callbacks, ZenModeController.Callback,
-        ColorExtractor.OnColorsChangedListener, ConfigurationListener, NotificationPresenter {
+        ColorExtractor.OnColorsChangedListener, ConfigurationListener, NotificationPresenter, AmbientIndicationManagerCallback {
     public static final boolean MULTIUSER_DEBUG = false;
 
     public static final boolean ENABLE_CHILD_NOTIFICATIONS
@@ -639,16 +637,6 @@ public class StatusBar extends SystemUI implements DemoMode,
                     super.onStrongAuthStateChanged(userId);
                     mEntryManager.updateNotifications();
                 }
-
-                @Override
-                public void onKeyguardVisibilityChanged(boolean showing) {
-                    try {
-                        if (!showing && mRecognitionEnabled){
-                            hideAmbientPlayIndication(0, true);
-                        }
-                    } catch (Exception e) {
-                    }
-                }
             };
 
     private NavigationBarFragment mNavigationBar;
@@ -663,7 +651,6 @@ public class StatusBar extends SystemUI implements DemoMode,
     private AmbientIndicationManager mAmbientIndicationManager;
 
     private boolean mRecognitionEnabled;
-    private boolean mRecognitionEnabledOnKeyguard;
     private Handler ambientClearingHandler;
     private Runnable ambientClearingRunnable;
 
@@ -831,7 +818,7 @@ public class StatusBar extends SystemUI implements DemoMode,
         putComponent(DozeHost.class, mDozeServiceHost);
 
         mAmbientIndicationManager = new AmbientIndicationManager(mContext);
-        mAmbientIndicationManager.registerCallback(mAmbientCallback);
+        mAmbientIndicationManager.registerCallback(this);
 
         mScreenPinningRequest = new ScreenPinningRequest(mContext);
         mFalsingManager = FalsingManager.getInstance(mContext);
@@ -1159,87 +1146,46 @@ public class StatusBar extends SystemUI implements DemoMode,
         mFlashlightController = Dependency.get(FlashlightController.class);
     }
 
-    private AmbientIndicationManagerCallback mAmbientCallback = new AmbientIndicationManagerCallback() {
-        @Override
-        public void onRecognitionResult(Observable observed) {
-            mHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    if (mRecognitionEnabled && mRecognitionEnabledOnKeyguard){
-                        ((AmbientIndicationContainer) mAmbientIndicationContainer).setIndication(observed.Song, observed.Artist);
-                        if (isKeyguardShowing()){
-                            showAmbientPlayIndication();
-                            hideAmbientPlayIndication(mAmbientIndicationManager.getAmbientClearViewInterval(), true);
-                        }else{
-                            hideAmbientPlayIndication(0, true);
-                        }
-                    }else{
-                        hideAmbientPlayIndication(0, true);
+    @Override
+    public void onRecognitionResult(Observable observed) {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mRecognitionEnabled){
+                    if (isAmbientContainerAvailable()) {
+                        ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(
+                                observed.Song + " - " + observed.Artist);
+                        mHandler.postDelayed(() -> {
+                            ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(null);
+                        }, mAmbientIndicationManager.getAmbientClearViewInterval());
+                    }
+                }else{
+                    if (isAmbientContainerAvailable()) {
+                        ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(null);
                     }
                 }
-            });
-        }
-
-        @Override
-        public void onRecognitionNoResult() {
-            hideAmbientPlayIndication(0, true);
-        }
-
-        @Override
-        public void onRecognitionError() {
-            hideAmbientPlayIndication(0, true);
-        }
-
-        @Override
-        public void onSettingsChanged(String key, boolean newValue) {
-            if (key.equals(Settings.System.AMBIENT_RECOGNITION)){
-                mRecognitionEnabled = newValue;
-            }else if (key.equals(Settings.System.AMBIENT_RECOGNITION_KEYGUARD)){
-                mRecognitionEnabledOnKeyguard = newValue;
             }
-        }
-    };
+        });
+    }
 
-    private void showAmbientPlayIndication(){
-        try {
-            if (mAmbientIndicationContainer != null){
-                mAmbientIndicationContainer.setVisibility(View.VISIBLE);
-                ((AmbientIndicationContainer) mAmbientIndicationContainer).showIndication();
-            }
-        } catch (Exception e) {
+    @Override
+    public void onRecognitionNoResult() {
+        if (isAmbientContainerAvailable()) {
+                ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(null);
         }
     }
 
-    private void hideAmbientPlayIndication(int interval, final boolean forceClear){
-        try {
-            ambientClearingHandler.removeCallbacks(ambientClearingRunnable);
-            ambientClearingRunnable = new Runnable(){
-                @Override
-                public void run() {
-                    if (mAmbientIndicationContainer != null){
-                        ((AmbientIndicationContainer) mAmbientIndicationContainer).hideIndication();
-                        mAmbientIndicationContainer.setVisibility(View.GONE);
-                        if (forceClear){
-                            ((AmbientIndicationContainer) mAmbientIndicationContainer).setIndication(null, null);
-                        }
-                    }
-                }
-            };
-            if (interval == 0){
-                ambientClearingHandler.post(ambientClearingRunnable);
-            }else{
-                ambientClearingHandler.postDelayed(ambientClearingRunnable, interval);
-            }
-        } catch (Exception e) {
+    @Override
+    public void onRecognitionError() {
+        if (isAmbientContainerAvailable()) {
+            ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(null);
         }
     }
 
-    private void updateAmbientIndicationForKeyguard() {
-        int recognitionKeyguard = Settings.Secure.getInt(
-            mContext.getContentResolver(), AMBIENT_RECOGNITION_KEYGUARD, 1);
-        if (!mRecognitionEnabled) return;
-        if (mAmbientIndicationContainer != null && recognitionKeyguard != 0) {
-            mAmbientIndicationContainer.setVisibility(View.VISIBLE);
+    @Override
+    public void onSettingsChanged(String key, boolean newValue) {
+        if (key.equals(Settings.System.AMBIENT_RECOGNITION)){
+            mRecognitionEnabled = newValue;
         }
     }
 
@@ -5472,14 +5418,14 @@ public class StatusBar extends SystemUI implements DemoMode,
                 UserHandle.USER_CURRENT) != 0;
         if (isAmbientContainerAvailable()) {
             ((AmbientIndicationContainer)mAmbientIndicationContainer).setIndication(
-                    mMediaManager.getMediaMetadata(), null);
+                    mMediaManager.getMediaMetadata(), null, false);
         }
     }
 
     public void setAmbientMusicInfo(MediaMetadata mediaMetadata, String notificationText) {
         if (isAmbientContainerAvailable()) {
             ((AmbientIndicationContainer)mAmbientIndicationContainer).setIndication(
-                    mediaMetadata, notificationText);
+                    mediaMetadata, notificationText, false);
         }
     }
 
