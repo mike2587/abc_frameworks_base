@@ -4417,14 +4417,16 @@ public final class Settings {
 
         /**
          * Whether Ambient Play enabled/disabled
-         *
+         * 0: Disabled
+         * 1: Automatic
+         * 2: Manual with volume rocker if screen is off
          * @hide
          */
         public static final String AMBIENT_RECOGNITION = "ambient_recognition";
 
         /** @hide */
         private static final Validator AMBIENT_RECOGNITION_VALIDATOR =
-                BOOLEAN_VALIDATOR;
+                NON_NEGATIVE_INTEGER_VALIDATOR;
 
         /** End of ABC system settings**/
 

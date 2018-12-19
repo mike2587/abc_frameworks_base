@@ -24,5 +24,5 @@ public interface AmbientIndicationManagerCallback {
 
     void onRecognitionError();
 
-    void onSettingsChanged(String key, boolean newValue);
+    void onSettingsChanged(String key, int newValue);
 }

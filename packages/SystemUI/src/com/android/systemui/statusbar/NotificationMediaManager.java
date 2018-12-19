@@ -390,7 +390,8 @@ public class NotificationMediaManager implements Dumpable {
         }, 20);
     }
 
-    public void onSkipTrackEvent(int key, final Handler h) {
+    public boolean onVolumeRockerLongPress(int key, final Handler h) {
+        boolean handled = false;
         if (mMediaSessionManager != null) {
             final List<MediaController> sessions
                     = mMediaSessionManager.getActiveSessionsForUser(
@@ -398,10 +399,13 @@ public class NotificationMediaManager implements Dumpable {
             for (MediaController aController : sessions) {
                 if (PlaybackState.STATE_PLAYING ==
                         getMediaControllerPlaybackState(aController)) {
+                    handled = true;
                     triggerKeyEvents(key, aController, h);
                     break;
                 }
             }
         }
+
+        return handled;
     }
 }

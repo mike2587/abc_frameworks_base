@@ -442,6 +442,7 @@ public class StatusBar extends SystemUI implements DemoMode,
     private int mPreviousDarkMode;
 
     private boolean mAmbientMediaPlaying;
+    private boolean mVolumeMusicControl;
 
     /**
      * Helper that is responsible for showing the right toast when a disallowed activity operation
@@ -650,7 +651,7 @@ public class StatusBar extends SystemUI implements DemoMode,
 
     private AmbientIndicationManager mAmbientIndicationManager;
 
-    private boolean mRecognitionEnabled;
+    private int mRecognitionMode;
     private Handler ambientClearingHandler;
     private Runnable ambientClearingRunnable;
 
@@ -1151,7 +1152,7 @@ public class StatusBar extends SystemUI implements DemoMode,
         mHandler.post(new Runnable() {
             @Override
             public void run() {
-                if (mRecognitionEnabled){
+                if (mRecognitionMode != 0){
                     if (isAmbientContainerAvailable()) {
                         ((AmbientIndicationContainer)mAmbientIndicationContainer).setNowPlayingIndication(
                                 observed.Song + " - " + observed.Artist);
@@ -1183,9 +1184,15 @@ public class StatusBar extends SystemUI implements DemoMode,
     }
 
     @Override
-    public void onSettingsChanged(String key, boolean newValue) {
-        if (key.equals(Settings.System.AMBIENT_RECOGNITION)){
-            mRecognitionEnabled = newValue;
+    public void onSettingsChanged(String key, int newValue) {
+        if (key.equals(Settings.System.AMBIENT_RECOGNITION)) {
+            mRecognitionMode = newValue;
+        } else if (key.equals(Settings.System.FORCE_AMBIENT_FOR_MEDIA)) {
+            mAmbientMediaPlaying = newValue == 1 ? true : false;
+            if (isAmbientContainerAvailable()) {
+                ((AmbientIndicationContainer)mAmbientIndicationContainer).setIndication(
+                        mMediaManager.getMediaMetadata(), null, false);
+            }
         }
     }
 
@@ -2348,7 +2355,11 @@ public class StatusBar extends SystemUI implements DemoMode,
         if (SPEW) Log.d(TAG, "handleNavigationKey: " + key);
 
         if (KeyEvent.KEYCODE_MEDIA_PREVIOUS == key || KeyEvent.KEYCODE_MEDIA_NEXT == key) {
-            mMediaManager.onSkipTrackEvent(key, mHandler);
+            final boolean skipTrack = mVolumeMusicControl && mMediaManager.onVolumeRockerLongPress(key, mHandler);
+            if (!skipTrack && isAmbientContainerAvailable() && mRecognitionMode == 2) {
+                // if the skip track even is not handled, let's trigger the Now Playing check
+                mAmbientIndicationManager.startRecording(true);
+            }
             return;
         }
 
@@ -5328,6 +5339,9 @@ public class StatusBar extends SystemUI implements DemoMode,
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.FORCE_AMBIENT_FOR_MEDIA),
                     false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.VOLUME_BUTTON_MUSIC_CONTROL),
+                    false, this, UserHandle.USER_ALL);
         }
 
         @Override
@@ -5360,8 +5374,8 @@ public class StatusBar extends SystemUI implements DemoMode,
                     Settings.System.LESS_BORING_HEADS_UP))) {
                 setUseLessBoringHeadsUp();
             } else if (uri.equals(Settings.System.getUriFor(
-                    Settings.System.FORCE_AMBIENT_FOR_MEDIA))) {
-                setForceAmbient();
+                    Settings.System.VOLUME_BUTTON_MUSIC_CONTROL))) {
+                setVolumeRockerSkipTrack();
             }
         }
 
@@ -5372,7 +5386,7 @@ public class StatusBar extends SystemUI implements DemoMode,
             setPulseBlacklist();
             setFpToDismissNotifications();
             setUseLessBoringHeadsUp();
-            setForceAmbient();
+            setVolumeRockerSkipTrack();
         }
     }
 
@@ -5412,16 +5426,6 @@ public class StatusBar extends SystemUI implements DemoMode,
         mEntryManager.setUseLessBoringHeadsUp(lessBoringHeadsUp);
     }
 
-    private void setForceAmbient() {
-        mAmbientMediaPlaying = Settings.System.getIntForUser(mContext.getContentResolver(),
-                Settings.System.FORCE_AMBIENT_FOR_MEDIA, 1,
-                UserHandle.USER_CURRENT) != 0;
-        if (isAmbientContainerAvailable()) {
-            ((AmbientIndicationContainer)mAmbientIndicationContainer).setIndication(
-                    mMediaManager.getMediaMetadata(), null, false);
-        }
-    }
-
     public void setAmbientMusicInfo(MediaMetadata mediaMetadata, String notificationText) {
         if (isAmbientContainerAvailable()) {
             ((AmbientIndicationContainer)mAmbientIndicationContainer).setIndication(
@@ -5431,6 +5435,12 @@ public class StatusBar extends SystemUI implements DemoMode,
 
     private boolean isAmbientContainerAvailable() {
         return mAmbientMediaPlaying && mAmbientIndicationContainer != null;
+    }
+
+    private void setVolumeRockerSkipTrack() {
+        mVolumeMusicControl = Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.VOLUME_BUTTON_MUSIC_CONTROL, 1,
+                UserHandle.USER_CURRENT) != 0;
     }
 
     private final BroadcastReceiver mBannerActionBroadcastReceiver = new BroadcastReceiver() {

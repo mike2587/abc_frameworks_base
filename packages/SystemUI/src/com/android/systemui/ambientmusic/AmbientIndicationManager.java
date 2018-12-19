@@ -44,7 +44,8 @@ public class AmbientIndicationManager {
     private static final String TAG = "AmbientIndicationManager";
     private Context mContext;
     private ContentResolver mContentResolver;
-    private boolean isRecognitionEnabled;
+    private int mRecognitionMode = 0;
+    private boolean mAmbientMediaPlaying;
     private RecognitionObserver mRecognitionObserver;
     private String ACTION_UPDATE_AMBIENT_INDICATION = "update_ambient_indication";
     private AlarmManager mAlarmManager;
@@ -58,7 +59,7 @@ public class AmbientIndicationManager {
     private List<AmbientIndicationManagerCallback> mCallbacks;
 
     private boolean needsUpdate() {
-        if (!isRecognitionEnabled) {
+        if (!mAmbientMediaPlaying || mRecognitionMode != 1) {
             return false;
         }
         return System.currentTimeMillis() - lastUpdated > lastAlarmInterval;
@@ -72,7 +73,7 @@ public class AmbientIndicationManager {
             return;
         }
         lastAlarmInterval = 0;
-        if (!isRecognitionEnabled) return;
+        if (!mAmbientMediaPlaying || mRecognitionMode != 1) return;
         int networkStatus = getNetworkStatus();
         int duration = 150000; // Default
 
@@ -139,11 +140,11 @@ public class AmbientIndicationManager {
             if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction()) || Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
                 if (needsUpdate()) {
                     updateAmbientPlayAlarm(true);
-                    startRecording();
+                    startRecording(false);
                 }
             } else if (ACTION_UPDATE_AMBIENT_INDICATION.equals(intent.getAction())) {
                 updateAmbientPlayAlarm(true);
-                startRecording();
+                startRecording(false);
             } else if (Intent.ACTION_TIME_CHANGED.equals(intent.getAction()) || Intent.ACTION_TIMEZONE_CHANGED.equals(intent.getAction())) {
                 lastUpdated = 0;
                 lastAlarmInterval = 0;
@@ -172,10 +173,10 @@ public class AmbientIndicationManager {
         context.registerReceiver(broadcastReceiver, filter);
     }
 
-    private void startRecording(){
-        if (!isRecognitionObserverBusy && isRecognitionEnabled){
+    public void startRecording(boolean forced){
+        if (mAmbientMediaPlaying && !isRecognitionObserverBusy && (forced || mRecognitionMode == 1)) {
             isRecognitionObserverBusy = true;
-            mRecognitionObserver.startRecording();
+            mRecognitionObserver.startRecording(forced);
         }
     }
 
@@ -195,6 +196,9 @@ public class AmbientIndicationManager {
             mContentResolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.AMBIENT_RECOGNITION),
                     false, this, UserHandle.USER_ALL);
+            mContentResolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.FORCE_AMBIENT_FOR_MEDIA),
+                    false, this, UserHandle.USER_ALL);
         }
 
         void unregister() {
@@ -208,14 +212,19 @@ public class AmbientIndicationManager {
             if (uri.equals(Settings.System.getUriFor(Settings.System.AMBIENT_RECOGNITION))) {
                 lastUpdated = 0;
                 lastAlarmInterval = 0;
-                dispatchSettingsChanged(Settings.System.AMBIENT_RECOGNITION, isRecognitionEnabled);
+                dispatchSettingsChanged(Settings.System.AMBIENT_RECOGNITION, mRecognitionMode);
+                updateAmbientPlayAlarm(false);
+            } else if (uri.equals(Settings.System.getUriFor(Settings.System.AMBIENT_RECOGNITION))) {
+                dispatchSettingsChanged(Settings.System.FORCE_AMBIENT_FOR_MEDIA, mAmbientMediaPlaying ? 1 : 0);
                 updateAmbientPlayAlarm(false);
             }
         }
 
         public void update() {
-            isRecognitionEnabled = Settings.System.getIntForUser(mContentResolver,
-                    Settings.System.AMBIENT_RECOGNITION, 0, UserHandle.USER_CURRENT) != 0;
+            mRecognitionMode = Settings.System.getIntForUser(mContentResolver,
+                    Settings.System.AMBIENT_RECOGNITION, 0, UserHandle.USER_CURRENT);
+            mAmbientMediaPlaying = Settings.System.getIntForUser(mContentResolver,
+                    Settings.System.FORCE_AMBIENT_FOR_MEDIA, 1, UserHandle.USER_CURRENT) == 1;
         }
     }
 
@@ -225,7 +234,8 @@ public class AmbientIndicationManager {
 
     public void registerCallback(AmbientIndicationManagerCallback callback) {
         mCallbacks.add(callback);
-        callback.onSettingsChanged(Settings.System.AMBIENT_RECOGNITION, isRecognitionEnabled);
+        callback.onSettingsChanged(Settings.System.AMBIENT_RECOGNITION, mRecognitionMode);
+        callback.onSettingsChanged(Settings.System.FORCE_AMBIENT_FOR_MEDIA, mAmbientMediaPlaying ? 1 : 0);
     }
 
     public void dispatchRecognitionResult(RecognitionObserver.Observable observed) {
@@ -275,7 +285,7 @@ public class AmbientIndicationManager {
         updateAmbientPlayAlarm(false);
     }
 
-    private void dispatchSettingsChanged(String key, boolean newValue) {
+    private void dispatchSettingsChanged(String key, int newValue) {
         for (AmbientIndicationManagerCallback cb : mCallbacks) {
             try {
                 cb.onSettingsChanged(key, newValue);
