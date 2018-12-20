@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2014 Fastboot Mobile, LLC.
  * Copyright (C) 2018 CypherOS
  * Copyright (C) 2018 PixelExperience
  *
@@ -26,9 +27,14 @@ import android.os.Process;
 import android.provider.Settings;
 import android.util.Log;
 
-import org.json.JSONObject;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import java.io.ByteArrayOutputStream;
+import org.apache.commons.lang.StringEscapeUtils;
 
 /**
  * Class helping audio fingerprinting for recognition
@@ -36,13 +42,15 @@ import java.io.ByteArrayOutputStream;
 public class RecognitionObserver implements AmbientIndicationManagerCallback {
 
     private static final String TAG = "RecognitionObserver";
+    private static final String USER_AGENT = "User-Agent: AppNumber=48000 APIVersion=2.1.0.0 DEV=Android UID=dkl109sas19s";
+    private static final String MIME_TYPE = "audio/wav";
 
     private static final int SAMPLE_RATE = 11025;
     private static final short BIT_DEPTH = 16;
     private static final short CHANNELS = 1;
     private static final int bufferSize = SAMPLE_RATE * 11 * 2;
     private static final int minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT);
+                AudioFormat.ENCODING_PCM_16BIT);
 
     private byte[] mBuffer;
     private AudioRecord mRecorder;
@@ -113,11 +121,13 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
     public static class Observable {
 
         public String Artist;
+        public String Album;
         public String Song;
+        public String ArtworkUrl;
 
         @Override
         public String toString() {
-            return Song + " by " + Artist;
+            return Artist + " - " + Song + " (" + Album + "); " + ArtworkUrl;
         }
     }
 
@@ -144,8 +154,7 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
                             if (mManager.DEBUG) Log.d(TAG, "BAD_VALUE while reading recorder");
                             break;
                         } else if (read == AudioRecord.ERROR_INVALID_OPERATION) {
-                            if (mManager.DEBUG)
-                                Log.d(TAG, "INVALID_OPERATION while reading recorder");
+                            if (mManager.DEBUG) Log.d(TAG, "INVALID_OPERATION while reading recorder");
                             break;
                         } else if (read >= 0) {
                             // Copy recording to a new array before StopRecording is called, because we are clearing the mBuffer there.
@@ -160,8 +169,7 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
 
             tryMatchCurrentBuffer();
 
-            if (mManager.DEBUG)
-                Log.d(TAG, "Broke out of recording loop, mResultGiven=" + mResultGiven);
+            if (mManager.DEBUG) Log.d(TAG, "Broke out of recording loop, mResultGiven=" + mResultGiven);
         }
 
         private void tryMatchCurrentBuffer() {
@@ -172,20 +180,10 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
             if (!isRecording) {
                 new Thread() {
                     public void run() {
-                        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-                        String requestResult;
-                        try {
-                            ByteArrayOutputStream finalBuffer = new ByteArrayOutputStream();
-                            WaveFormat header = new WaveFormat(WaveFormat.FORMAT_PCM, CHANNELS, SAMPLE_RATE, BIT_DEPTH, buffCopy.length);
-                            header.write(finalBuffer);
-                            finalBuffer.write(buffCopy);
-                            finalBuffer.close();
-                            requestResult = AuddApi.sendRequest(mManager, finalBuffer.toByteArray());
-                        } catch (Exception e) {
-                            if (mManager.DEBUG) e.printStackTrace();
-                            requestResult = null;
-                        }
-                        parseResult(requestResult);
+                        Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                        // Allow only one upload call at a time
+                        String output_xml = sendAudioData(buffCopy, buffCopy.length);
+                        parseXmlResult(output_xml);
                     }
                 }.start();
             } else {
@@ -193,30 +191,75 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
             }
         }
 
-        private void parseResult(String result) {
-            if (!mAmbientMediaPlaying || !isRecognitionEnabled || result == null) {
+        private String sendAudioData(byte[] inputBuffer, int length) {
+            if (!mAmbientMediaPlaying || !isRecognitionEnabled) {
+                return "";
+            }
+            if (mManager.DEBUG) Log.d(TAG, "Preparing to send audio data: " + length + " bytes");
+            try {
+                URL url = new URL("http://search.midomi.com:443/v2/?method=search&type=identify");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.addRequestProperty("User-Agent", USER_AGENT);
+                conn.addRequestProperty("Content-Type", MIME_TYPE);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(30000);
+                conn.setReadTimeout(30000);
+
+                // Write the WAVE audio header, then the PCM data
+                if (mManager.DEBUG) Log.d(TAG, "Sending mic data, " + length + " bytes...");
+                WaveFormat header = new WaveFormat(WaveFormat.FORMAT_PCM, CHANNELS,
+                        SAMPLE_RATE, BIT_DEPTH, length);
+                header.write(conn.getOutputStream());
+                conn.getOutputStream().write(inputBuffer, 0, length);
+
+                InputStream is = conn.getInputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                StringBuilder sb = new StringBuilder();
+                while ((read = is.read(buffer)) > 0) {
+                    sb.append(new String(buffer, 0, read));
+                }
+
+                return sb.toString();
+            } catch (IOException e) {
+                if (mManager.DEBUG) Log.d(TAG, "Error while sending audio data", e);
+            }
+
+            return "";
+        }
+
+        private void parseXmlResult(String xml) {
+            if (!mAmbientMediaPlaying || !isRecognitionEnabled) {
                 reportResult(null);
                 return;
             }
-            // Return result
-            if (mManager.DEBUG) Log.d(TAG, "Parsing result: " + result);
-            Observable observed = new Observable();
-            try {
-                JSONObject jsonResult = new JSONObject(result);
-                if (!jsonResult.isNull("status") && jsonResult.getString("status").equals("success") && !jsonResult.isNull("result")) {
-                    observed.Artist = jsonResult.getJSONObject("result").getString("artist");
-                    observed.Song = jsonResult.getJSONObject("result").getString("title");
-                    if (mManager.DEBUG) Log.d(TAG, "Got a match: " + observed);
+            if (xml.contains("did not hear any music") || xml.contains("no close matches")) {
+                // No result
+                if (mManager.DEBUG) Log.d(TAG, "No match (Maybe we could not hear the song?)");
+                reportResult(null);
+            } else {
+                // Return result where everything is fine
+                Observable observed = new Observable();
+
+                Pattern data_re = Pattern.compile("<track .*?artist_name=\"(.*?)\".*?album_name=\"(.*?)\".*?track_name=\"(.*?)\".*?album_primary_image=\"(.*?)\".*?>",
+                        Pattern.DOTALL | Pattern.MULTILINE);
+                Matcher match = data_re.matcher(xml.replaceAll("\n", ""));
+
+                if (match.find()) {
+                    observed.Artist = StringEscapeUtils.unescapeHtml(match.group(1));
+                    observed.Album = StringEscapeUtils.unescapeHtml(match.group(2));
+                    observed.Song = StringEscapeUtils.unescapeHtml(match.group(3));
+                    observed.ArtworkUrl = match.group(4);
+                    if (mManager.DEBUG) Log.d(TAG, "Got a match! " + observed);
                 } else {
-                    if (mManager.DEBUG) Log.d(TAG, "No match (Maybe we could not hear the song?)");
+                    if (mManager.DEBUG) Log.d(TAG, "Regular expression didn't match!");
+                    observed = null;
                 }
-            } catch (Exception e) {
-                if (mManager.DEBUG) e.printStackTrace();
+                reportResult(observed);
             }
-            reportResult(observed);
         }
 
-        private boolean isNullResult(Observable observed) {
+        private boolean isNullResult(Observable observed){
             return observed == null || observed.Artist == null || observed.Song == null;
         }
 
@@ -257,8 +300,7 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
                             mRecorder.startRecording();
                             mRecThread.start();
                         } catch (Exception e) {
-                            if (mManager.DEBUG)
-                                Log.d(TAG, "Cannot start recording for recognition", e);
+                            if (mManager.DEBUG) Log.d(TAG, "Cannot start recording for recognition", e);
                                 Message msg = Message.obtain(mHandler, MSG_ERROR);
                                 mHandler.sendMessage(msg);
                         }
@@ -271,7 +313,7 @@ public class RecognitionObserver implements AmbientIndicationManagerCallback {
                     stopRecording();
                 }
             }.start();
-        } else {
+        }else{
             if (mManager.DEBUG) Log.d(TAG, "No connectivity, triggering dispatchRecognitionError");
             stopRecording();
             Message msg = Message.obtain(mHandler, MSG_ERROR);
