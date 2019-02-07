@@ -4063,6 +4063,12 @@ public class StatusBar extends SystemUI implements DemoMode,
         mKeyguardIndicationController.setDozing(mDozing);
         mNotificationPanel.setDozing(mDozing, animate);
         updateQsExpansionEnabled();
+
+        if (isAmbientContainerAvailable()) {
+            ((AmbientIndicationContainer)mAmbientIndicationContainer)
+                    .updateDozingState(mDozing);
+        }
+
         Trace.endSection();
     }
 
